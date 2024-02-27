@@ -1,44 +1,54 @@
 import json
 import pandas as pd
-from datetime import datetime
 from dateutil import parser
-
+import matplotlib.pyplot as plt
 
 # Load your JSON data
 with open('Takeout/Location History (Timeline)/Semantic Location History/2024/2024_FEBRUARY.json') as f:
     data = json.load(f)
 
-# Extracting the relevant information
-activities = []
-datetime_format = "%Y-%m-%dT%H:%M:%S.%fZ"
+# List of dates to skip in the format 'YYYY-MM-DD'
+dates_to_skip = ['2024-02-05', '2024-02-10']  # Example dates to skip
 
+# Extracting the relevant information
+passenger_vehicle_activities = []
 
 for obj in data['timelineObjects']:
     if 'activitySegment' in obj:
         segment = obj['activitySegment']
-        start_time = parser.parse(segment['duration']['startTimestamp'])
-        end_time = parser.parse(segment['duration']['endTimestamp'])
-
-
-        distance = segment['distance']
         activity_type = segment['activityType']
-        activities.append({
-            'start_time': start_time,
-            'end_time': end_time,
-            'distance': distance,
-            'activity_type': activity_type
-        })
+        
+        # Check if the activity type is "IN_PASSENGER_VEHICLE"
+        if activity_type == "IN_PASSENGER_VEHICLE":
+            start_time = parser.parse(segment['duration']['startTimestamp'])
+            
+            # Skip activities on specified dates
+            if start_time.strftime('%Y-%m-%d') in dates_to_skip:
+                continue  # Skip this iteration and don't add the activity
+            
+            end_time = parser.parse(segment['duration']['endTimestamp'])
+            distance = segment['distance']
+
+            passenger_vehicle_activities.append({
+                'date': start_time.date(),
+                'distance': distance * 0.000621371,  # Convert meters to miles
+            })
 
 # Converting to DataFrame for easier analysis
-df = pd.DataFrame(activities)
+df = pd.DataFrame(passenger_vehicle_activities)
 
-# Adding month and year for grouping
-df['month'] = df['start_time'].dt.month
-df['year'] = df['start_time'].dt.year
+# Aggregating distance by day
+daily_distance = df.groupby('date')['distance'].sum().reset_index()
 
-# Grouping by month and year to get monthly stats
-monthly_distance = df.groupby(['year', 'month'])['distance'].sum().reset_index(name='total_distance')
-activity_distribution = df.groupby(['activity_type']).size().reset_index(name='counts')
+# Calculate total distance
+total_distance_miles = daily_distance['distance'].sum()
 
-print(monthly_distance)
-print(activity_distribution)
+# Plotting
+plt.figure(figsize=(10, 6))
+plt.bar(daily_distance['date'].astype(str), daily_distance['distance'], color='blue')
+plt.title(f'Daily Distance Traveled in Passenger Vehicle (Miles)\nTotal: {total_distance_miles:.2f} Miles')
+plt.xlabel('Date')
+plt.ylabel('Distance (Miles)')
+plt.xticks(rotation=45)
+plt.tight_layout()  # Adjust layout to make room for the rotated x-axis labels
+plt.show()
